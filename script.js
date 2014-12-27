@@ -255,6 +255,7 @@ clock = Clock();
 clock.start();
 gravity = 0;
 
+//test comment
 setInterval(function(){
 	seconds_passed = clock.seconds_elapsed()
 	ball.update(seconds_passed,gravity);
