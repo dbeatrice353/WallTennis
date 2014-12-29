@@ -32,6 +32,11 @@ function v_scale(v,k){
 	return Vector(v.x*k,v.y*k);
 }
 
+function v_scale_in_place(v,k){
+	v.x *= k;
+	v.y *= k;
+}
+
 function v_dot_product(v1,v2){
 	return v1.x*v2.x + v1.y*v2.y;
 }
@@ -143,7 +148,7 @@ function TennisCourt(screen_width,screen_length){
 			middle_court_x = (this.screen_width/2).toFixed()
 			draw_line(context,line_color,point_a,point_b);
 		},
-		render: function(){
+		render: function(context){
 			this.render_sky(context);
 			this.render_ground(context);
 			this.render_court(context);
@@ -157,9 +162,9 @@ function TennisBall(position,velocity,radius,color){
 	return {position: position,
 			velocity: velocity,
 			radius: radius,
-			mass: Math.PI*Math.pow(this.radius,2),
+			mass: 50,//3.14*Math.pow(radius,2),
 			color: color,
-			dampening: .99999,
+			dampening: .999, 
 			set_velocity: function(new_velocity){
 				this.velocity = new_velocity;
 			},
@@ -174,16 +179,13 @@ function TennisBall(position,velocity,radius,color){
 			},
 			update: function(seconds_passed,gravity){
 				this.position = v_add(this.position,v_scale(this.velocity,seconds_passed));
-				this.velocity = v_add_k(this.velocity,gravity);
+				this.velocity.y += gravity;
+				v_scale_in_place(this.velocity,this.dampening);
 			},
 			render: function(context){
 				context.beginPath();
-				context.arc(this.position.x,
-						   this.position.y,
-						   this.radius,
-						   0,
-						   2*Math.PI,
-						   1);
+				context.arc(this.position.x,this.position.y,this.radius,
+						   0,2*Math.PI,1);
 				context.stroke();
 				context.fillStyle = this.color;
 				context.fill();
@@ -201,7 +203,7 @@ function TennisRacket(){
 		h: 80,
 		w: 30,
 		radius: 25,
-		mass: 15,
+		mass: 50,
 		color: 'blue',
 		update: function(time_passed){
 			px_temp = this.px;
@@ -219,7 +221,64 @@ function TennisRacket(){
 		}
 	}
 }
-//----------------------------KEEP TRACK OF TIME---------------------------------
+//---------------------------------COLLISION-------------------------------------
+function wall_contact(obj,wall_x_boundry,wall_top,ground_level){
+	if(obj.position.x < ground_level &&
+	  obj.position.y + obj.radius > wall_top && 
+	  obj.position.x - obj.radius < wall_x_boundry){
+		return 1;
+	} else {
+		return 0;
+	}	
+}
+function manage_boundry_collision(obj,wall_x_boundry,wall_top,ground_level){
+	wall_dampen = .5;
+	if(wall_contact(obj,wall_x_boundry,wall_top,ground_level)){
+		obj.velocity.x *= -wall_dampen;
+		obj.position.x = wall_x_boundry + obj.radius + 1;
+	}
+	if(obj.position.y + obj.radius > ground_level){
+		obj.velocity.y *= -1;
+		obj.position.y = ground_level - obj.radius;
+	}
+}
+
+function manage_racket_collision(racket,ball){
+	if(ball.position.y + ball.radius > racket.py - racket.h/2 &&
+	   ball.position.y - ball.radius < racket.py + racket.h/2 &&
+	   Math.abs(ball.position.x - racket.px) < ball.radius){
+		racket_collision(racket,ball);
+	}
+}
+
+function racket_collision(racket,ball){
+	v1 = Vector(racket.vx,racket.vy);
+	v2 = ball.get_velocity();
+	p2 = ball.get_position();
+	p1 = Vector(racket.px,p2.y);
+	m1 = racket.mass;
+	m2 = ball.mass;
+	
+	unit_norm = v_add(p2,v_scale(p1,-1));
+	unit_norm.normalize();
+	unit_tan = Vector(-unit_norm.y, unit_norm.x);
+	
+	v1n = v_dot_product(unit_norm,v1);
+	v2n = v_dot_product(unit_norm,v2);
+	v2t = v_dot_product(unit_tan,v2);
+	
+    v2t_prime_scal = v2t;
+    v2n_prime_scal = (v2n*(m2 - m1) + 2*m1*v1n)/(m1 + m2);
+    v2n_prime = v_scale(unit_norm,v2n_prime_scal);
+    v2t_prime = v_scale(unit_tan,v2t_prime_scal);
+    v2_prime = v_add(v2n_prime,v2t_prime);
+
+    ball.set_velocity(v2_prime);
+
+    norm = v_add(p1,v_scale(p2,-1));
+    ball.position = v_add(ball.position, v_scale(norm,-1)); 
+}
+//----------------------------TIME---------------------------------
 
 function Clock(){
 	return{
@@ -235,34 +294,68 @@ function Clock(){
 	}
 }
 
+//----------------------------TIME---------------------------------
+
+function Score(){
+	return{
+		score: 0,
+		up: function(){
+			this.score++;
+		},
+		render: function(context){
+			var output = 'score: ';
+			output = output.concat(this.score.toString());
+			context.fillStyle = 'black';
+			context.font = 'bold 30px courier';
+			context.fillText(output,15,30);
+		}
+	}
+}
+
+function game(){
+	court = TennisCourt(width,length);
+	ball = TennisBall(Vector(300,80),Vector(0.0,0.0),15,'yellow');
+	racket = TennisRacket()
+	score = Score();
+	clock = Clock();
+	clock.start();
+	gravity = 10.0;
+
+	wall_x_boundry = 90;
+	wall_top = 50;
+	ground_level = length - 100;
+	
+	setInterval(function(){
+		seconds_passed = clock.seconds_elapsed()
+
+		ball.update(seconds_passed,gravity);
+		racket.update(seconds_passed);
+		//if the ball bounced off the wall, increment the score.
+		if(wall_contact(ball,wall_x_boundry,wall_top,ground_level)){
+			score.up();
+		}
+		manage_boundry_collision(ball,wall_x_boundry,wall_top,ground_level);
+		manage_racket_collision(racket,ball);
+		
+		court.render(context);
+		ball.render(context);
+		racket.render(context);
+		score.render(context);
+		
+	},fps)
+}
+
 
 var canvas = document.getElementById("mainCanvas");
 var context = canvas.getContext("2d");
-var mouse_position = {x:999999,y:999999};
-var fps = 1000/30;
+var fps = 1000/100;
 var width = 640;
 var length = 440;
+var mouse_position = {x:999999,y:999999};
 
 window.addEventListener('mousemove',function(mouse_event){
 mouse_position.x = mouse_event.clientX;
 mouse_position.y = mouse_event.clientY;		
 }, false);
-	
-court = TennisCourt(width,length);
-ball = TennisBall(Vector(300,300),Vector(-10,-10),15,'yellow');
-racket = TennisRacket()
-clock = Clock();
-clock.start();
-gravity = 0;
 
-//test comment
-setInterval(function(){
-	seconds_passed = clock.seconds_elapsed()
-	ball.update(seconds_passed,gravity);
-	racket.update(seconds_passed);
-	court.render(context);
-	ball.render(context);
-	racket.render(context);
-},fps)
-
-
+game();
