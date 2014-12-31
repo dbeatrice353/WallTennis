@@ -506,5 +506,6 @@ function main(){
 	},fps)
 }
 
-
+//run
+main();
 
