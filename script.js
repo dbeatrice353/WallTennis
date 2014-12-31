@@ -1,3 +1,26 @@
+//Call main() to run the game.
+
+var MOUSE_POSITION = {x:999999,y:999999};
+var MOUSE_DOWN = false;
+
+//----------------------------EVENTS------------------------------------
+
+window.addEventListener('mousemove',function(mouse_event){
+MOUSE_POSITION.x = mouse_event.clientX;
+MOUSE_POSITION.y = mouse_event.clientY;		
+}, false);
+
+window.addEventListener('mousedown', function on_canvas_click(mouse_event){
+	MOUSE_DOWN = true;
+}, false);
+
+window.addEventListener('mouseup', function on_canvas_click(mouse_event){
+	MOUSE_DOWN = false;
+}, false);
+
+
+//----------------------VECTOR--------------------------------------------
+
 
 function Vector(x,y){
 	return{
@@ -90,9 +113,9 @@ function draw_ellipse(context,x,y,w,h,color) {
   context.fill();
   context.closePath();	
 }
-//-------------------------TENNIS COURT------------------------------------
-
-function TennisCourt(screen_width,screen_length){
+//-------------------------BACKGROUND------------------------------------
+// Court, wall, grass, sky etc
+function BackGround(screen_width,screen_length){
 	return{
 		screen_length:screen_length,
 		screen_width:screen_width,
@@ -180,7 +203,7 @@ function TennisBall(position,velocity,radius,color){
 			update: function(seconds_passed,gravity){
 				this.position = v_add(this.position,v_scale(this.velocity,seconds_passed));
 				this.velocity.y += gravity;
-				v_scale_in_place(this.velocity,this.dampening);
+				//v_scale_in_place(this.velocity,this.dampening);
 			},
 			render: function(context){
 				context.beginPath();
@@ -208,8 +231,8 @@ function TennisRacket(){
 		update: function(time_passed){
 			px_temp = this.px;
 			py_temp = this.py;
-			this.px = mouse_position.x;
-			this.py = mouse_position.y;
+			this.px = MOUSE_POSITION.x;
+			this.py = MOUSE_POSITION.y;
 			if(time_passed != 0){
 				this.vx = (this.px - px_temp)/time_passed;
 				this.vy = (this.py - py_temp)/time_passed;
@@ -233,12 +256,13 @@ function wall_contact(obj,wall_x_boundry,wall_top,ground_level){
 }
 function manage_boundry_collision(obj,wall_x_boundry,wall_top,ground_level){
 	wall_dampen = .5;
+	ground_dampen = 1;
 	if(wall_contact(obj,wall_x_boundry,wall_top,ground_level)){
 		obj.velocity.x *= -wall_dampen;
 		obj.position.x = wall_x_boundry + obj.radius + 1;
 	}
 	if(obj.position.y + obj.radius > ground_level){
-		obj.velocity.y *= -1;
+		obj.velocity.y *= -ground_dampen;
 		obj.position.y = ground_level - obj.radius;
 	}
 }
@@ -278,6 +302,15 @@ function racket_collision(racket,ball){
     norm = v_add(p1,v_scale(p2,-1));
     ball.position = v_add(ball.position, v_scale(norm,-1)); 
 }
+
+function ball_left_the_screen(ball,screen_len,screen_width){
+    if(ball.position.x - ball.radius > screen_width ||
+       ball.position.x + ball.radius < 0){
+        return true;
+    } else {
+        return false;
+	}	
+}
 //----------------------------TIME---------------------------------
 
 function Clock(){
@@ -302,6 +335,9 @@ function Score(){
 		up: function(){
 			this.score++;
 		},
+		reset: function(){
+			this.score = 0;
+		},
 		render: function(context){
 			var output = 'score: ';
 			output = output.concat(this.score.toString());
@@ -311,51 +347,164 @@ function Score(){
 		}
 	}
 }
+//-----------------------GAME STATES------------------------------------------
+// PreGame:  "Click to start..."
+// Game: 	 *actual game*
+// PostGame: "Your score:...Click to play again"
 
-function game(){
-	court = TennisCourt(width,length);
-	ball = TennisBall(Vector(300,80),Vector(0.0,0.0),15,'yellow');
-	racket = TennisRacket()
-	score = Score();
-	clock = Clock();
-	clock.start();
-	gravity = 10.0;
-
-	wall_x_boundry = 90;
-	wall_top = 50;
-	ground_level = length - 100;
-	
-	setInterval(function(){
-		seconds_passed = clock.seconds_elapsed()
-
-		ball.update(seconds_passed,gravity);
-		racket.update(seconds_passed);
-		//if the ball bounced off the wall, increment the score.
-		if(wall_contact(ball,wall_x_boundry,wall_top,ground_level)){
-			score.up();
+function PreGame(context,width,height){
+	return{
+		context: context,
+		width: width,
+		height: height,
+		box_w: 30,
+		box_h: 20,
+		box_x: width/2 - this.box_w,
+		box_y: height/2 - this.box_h,
+		color: 'yellow',
+		start_game: false,
+		render: function(context){
+			draw_box(this.context,this.box_x,this.box_y,this.box_w,this.box_h,this.color);
+			context.font = 'bold 30px courier';
+			context.fillText("WALL TENNIS",10,100); 
+			context.font = 'bold 20px courier';
+			context.fillText("Keep the ball in play as long as you can.",10,150); 
+			context.fillText("Score points by bouncing the ball off the wall.",10,200); 
+			context.fillText("Click to begin.",10,250); 
+		},
+		check_for_game_start: function(){
+			if(MOUSE_DOWN){
+				this.start_game = true;
+			} else {
+				this.start_game = false;
+			}
+		},
+		process: function(){
+			this.check_for_game_start();
+			this.render(this.context);
 		}
-		manage_boundry_collision(ball,wall_x_boundry,wall_top,ground_level);
-		manage_racket_collision(racket,ball);
-		
-		court.render(context);
-		ball.render(context);
-		racket.render(context);
-		score.render(context);
+	}
+}
+
+
+function Game(context,width,height){
+	return{
+		context: context,
+		ball: TennisBall(Vector(300,80),Vector(0.0,0.0),15,'yellow'),
+		racket: TennisRacket(),
+		score: Score(),
+		clock: Clock(),
+		height: height,
+		width: width,
+		gravity: 10.0,
+		wall_x_boundry: 90,
+		wall_top: 50,
+		ground_level: height - 100,
+		game_over: false,
+		begin: function(){
+			this.clock.start();
+		},
+		check_for_game_over: function(){
+			this.game_over = ball_left_the_screen(this.ball,this.height,this.width);
+		},
+		reset: function(){
+			this.game_over = false;
+			this.score.reset();
+			this.ball = TennisBall(Vector(300,80),Vector(0.0,0.0),15,'yellow');
+		},
+		render: function(context){
+			this.ball.render(context);
+			this.racket.render(context);
+			this.score.render(context);
+		},
+		process: function(){
+			seconds_passed = this.clock.seconds_elapsed()
+			this.ball.update(seconds_passed,this.gravity);
+			this.racket.update(seconds_passed);
+			//if the ball bounced off the wall, increment the score.
+			if(wall_contact(this.ball,this.wall_x_boundry,this.wall_top,this.ground_level)){
+				this.score.up();
+			}
+			manage_boundry_collision(this.ball,this.wall_x_boundry,this.wall_top,this.ground_level);
+			manage_racket_collision(this.racket,this.ball);
+			this.check_for_game_over();
+			this.render(this.context);
+		}
+
+	}
+}
+function PostGame(context,width,height){
+	return{
+		score: 0,
+		width: width,
+		height: height,
+		context: context,
+		new_game: false,
+		check_for_new_game: function(){
+			if(MOUSE_DOWN){
+				this.new_game = true;
+			} else {
+				this.new_game = false;
+			}
+		},	
+		render: function(context){
+			context.fillStyle = 'black';
+			context.font = 'bold 20px courier';
+			context.fillText("your score: "+this.score.toString(),300,100); 
+			context.fillText("click to play again",300,130); 
+		},
+		process: function(){
+			this.check_for_new_game();
+			this.render(this.context);
+		}	
+	}
+}
+
+//------------------------------MAIN------------------------------------------------
+
+function main(){
+	var canvas = document.getElementById("mainCanvas");
+	var context = canvas.getContext("2d");
+	var fps = 1000/100;
+	var width = 640;
+	var height = 440;
+	
+	background = BackGround(width,height);
+	pregame = PreGame(context,width,height);
+	game = Game(context,width,height);
+	postgame = PostGame(context,width,height);
+	
+	game_state = 'before';
+
+	setInterval(function(){
+		background.render(context);
+		switch(game_state){
+			case 'before':
+				pregame.process();
+				if(pregame.start_game){
+					game_state = 'during';
+					game.begin();
+				}
+				break;
+			case 'during':
+				game.process();
+				if(game.game_over){
+					postgame.score = game.score.score;
+					game_state = 'after';
+				}
+				break;
+			default: //game_state = 'after'
+				postgame.process();
+				if(postgame.new_game){
+					game_state = 'during';
+					game.reset();
+					game.begin();
+				}
+				break;
+		}
 		
 	},fps)
 }
 
 
-var canvas = document.getElementById("mainCanvas");
-var context = canvas.getContext("2d");
-var fps = 1000/100;
-var width = 640;
-var length = 440;
-var mouse_position = {x:999999,y:999999};
 
-window.addEventListener('mousemove',function(mouse_event){
-mouse_position.x = mouse_event.clientX;
-mouse_position.y = mouse_event.clientY;		
-}, false);
-
-game();
