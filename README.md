@@ -3,4 +3,4 @@ WallTennis
 
 Simple wall tennis game in javascript.
 
-In progress!
+A known bug exists with the physics: The bounces a little higher with each bounce, on its own. 
