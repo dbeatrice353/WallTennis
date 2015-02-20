@@ -1,13 +1,21 @@
 //Call main() to run the game.
-
 var MOUSE_POSITION = {x:999999,y:999999};
 var MOUSE_DOWN = false;
-
+var CANVAS = null;
+var MOUSE_OVER_CANVAS = null;
 //----------------------------EVENTS------------------------------------
 
 window.addEventListener('mousemove',function(mouse_event){
-MOUSE_POSITION.x = mouse_event.clientX;
-MOUSE_POSITION.y = mouse_event.clientY;		
+	var rect = CANVAS.getBoundingClientRect();
+	x = mouse_event.clientX;
+	y = mouse_event.clientY;
+	MOUSE_POSITION.x = x - rect.left;
+	MOUSE_POSITION.y = y - rect.top;
+	if(x > rect.left && x < rect.right && y > rect.top && y < rect.bottom){
+		MOUSE_OVER_CANVAS = true;
+	} else {
+		MOUSE_OVER_CANVAS = false;
+	}
 }, false);
 
 window.addEventListener('mousedown', function on_canvas_click(mouse_event){
@@ -18,6 +26,11 @@ window.addEventListener('mouseup', function on_canvas_click(mouse_event){
 	MOUSE_DOWN = false;
 }, false);
 
+//----------------------MOUSE THINGS--------------------------------------
+
+reset_mouse = function(){
+	MOUSE_POSITION = {x:999999,y:999999};
+}
 
 //----------------------VECTOR--------------------------------------------
 
@@ -187,7 +200,7 @@ function TennisBall(position,velocity,radius,color){
 			radius: radius,
 			mass: 50,//3.14*Math.pow(radius,2),
 			color: color,
-			dampening: .999, 
+			dampening: .999,
 			set_velocity: function(new_velocity){
 				this.velocity = new_velocity;
 			},
@@ -201,8 +214,8 @@ function TennisBall(position,velocity,radius,color){
 				return this.position;
 			},
 			update: function(seconds_passed,gravity){
-				this.position = v_add(this.position,v_scale(this.velocity,seconds_passed));
 				this.velocity.y += gravity;
+				this.position = v_add(this.position,v_scale(this.velocity,seconds_passed));
 				//v_scale_in_place(this.velocity,this.dampening);
 			},
 			render: function(context){
@@ -245,10 +258,11 @@ function TennisRacket(){
 	}
 }
 //---------------------------------COLLISION-------------------------------------
+
 function wall_contact(obj,wall_x_boundry,wall_top,ground_level){
 	if(obj.position.x < ground_level &&
-	  obj.position.y + obj.radius > wall_top && 
-	  obj.position.x - obj.radius < wall_x_boundry){
+	   obj.position.y > wall_top && 
+	   obj.position.x - obj.radius < wall_x_boundry){
 		return 1;
 	} else {
 		return 0;
@@ -257,11 +271,11 @@ function wall_contact(obj,wall_x_boundry,wall_top,ground_level){
 function manage_boundry_collision(obj,wall_x_boundry,wall_top,ground_level){
 	wall_dampen = .5;
 	ground_dampen = 1;
-	if(wall_contact(obj,wall_x_boundry,wall_top,ground_level)){
+	if(wall_contact(obj,wall_x_boundry,wall_top,ground_level)){// wall collision
 		obj.velocity.x *= -wall_dampen;
 		obj.position.x = wall_x_boundry + obj.radius + 1;
 	}
-	if(obj.position.y + obj.radius > ground_level){
+	if(obj.position.y + obj.radius > ground_level){// ground collision
 		obj.velocity.y *= -ground_dampen;
 		obj.position.y = ground_level - obj.radius;
 	}
@@ -373,7 +387,7 @@ function PreGame(context,width,height){
 			context.fillText("Click to begin.",10,250); 
 		},
 		check_for_game_start: function(){
-			if(MOUSE_DOWN){
+			if(MOUSE_DOWN && MOUSE_OVER_CANVAS){
 				this.start_game = true;
 			} else {
 				this.start_game = false;
@@ -390,7 +404,7 @@ function PreGame(context,width,height){
 function Game(context,width,height){
 	return{
 		context: context,
-		ball: TennisBall(Vector(300,80),Vector(0.0,0.0),15,'yellow'),
+		ball: TennisBall(Vector(300,20),Vector(0.0,0.0),15,'yellow'),
 		racket: TennisRacket(),
 		score: Score(),
 		clock: Clock(),
@@ -441,7 +455,7 @@ function PostGame(context,width,height){
 		context: context,
 		new_game: false,
 		check_for_new_game: function(){
-			if(MOUSE_DOWN){
+			if(MOUSE_DOWN && MOUSE_OVER_CANVAS){
 				this.new_game = true;
 			} else {
 				this.new_game = false;
@@ -462,7 +476,9 @@ function PostGame(context,width,height){
 
 //------------------------------MAIN------------------------------------------------
 
+
 function main(){
+	CANVAS = document.getElementById("mainCanvas");
 	var canvas = document.getElementById("mainCanvas");
 	var context = canvas.getContext("2d");
 	var fps = 1000/100;
@@ -478,6 +494,8 @@ function main(){
 
 	setInterval(function(){
 		background.render(context);
+		// subtract the bounds of the canvas off the mouse coordinates.
+		//adjustMouse(canvas)
 		switch(game_state){
 			case 'before':
 				pregame.process();
@@ -489,6 +507,7 @@ function main(){
 			case 'during':
 				game.process();
 				if(game.game_over){
+					reset_mouse();
 					postgame.score = game.score.score;
 					game_state = 'after';
 				}
@@ -506,6 +525,7 @@ function main(){
 	},fps)
 }
 
-//run
+//-----
 main();
+
 
